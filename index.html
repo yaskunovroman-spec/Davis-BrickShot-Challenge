@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Davis BrickShot Challenge 🧱🏀</title>
+
+  <!-- ✅ PWA manifest -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0d1b2a">
+
+  <!-- ✅ iPhone / iPad web app settings -->
+  <link rel="apple-touch-icon" href="icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0d1b2a;
+      color: white;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+      font-family: 'Arial', sans-serif;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(#1b263b, #0d1b2a);
+      cursor: pointer;
+    }
+    #title {
+      position: absolute;
+      top: 10%;
+      width: 100%;
+      text-align: center;
+      font-size: 2em;
+      text-shadow: 0 0 10px #fff, 0 0 20px #1e90ff;
+      animation: glow 3s infinite alternate;
+    }
+    @keyframes glow {
+      from { text-shadow: 0 0 10px #fff, 0 0 20px #1e90ff; }
+      to { text-shadow: 0 0 20px #fff, 0 0 40px #1e90ff; }
+    }
+    #score {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 1.2em;
+      background: rgba(0,0,0,0.4);
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+  </style>
+  <link rel="icon" href="data:,">
+  <!-- empty data URL to avoid 404 favicons in local dev -->
+</head>
+
+<body>
+  <div id="title">🏀 Davis BrickShot Challenge 🧱</div>
+  <div id="score">Score: 0 | Shots: 0/10</div>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let w = window.innerWidth;
+    let h = window.innerHeight;
+
+    function resizeCanvas() {
+      w = window.innerWidth;
+      h = window.innerHeight;
+      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resizeCanvas();
+
+    let score = 0;
+    let shots = 0;
+    const hoop = { x: w/2, y: h/3, r: 40 };
+    const bricks = [];
+    const gravity = 0.6;
+
+    // graffiti banners (you can replace with safer strings before publishing)
+    const banners = ["snich bitch", "davis_jrt", "BANDITOS"];
+
+    function drawCourt() {
+      ctx.fillStyle = "#1b263b";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(hoop.x, hoop.y, hoop.r, 0, Math.PI*2);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255,255,255,0.1)";
+      for (let i = 0; i < 120; i++) {
+        ctx.fillRect(Math.random()*w, Math.random()*h, 2, 2);
+      }
+
+      // graffiti
+      ctx.font = "bold 26px Courier";
+      banners.forEach((text, i) => {
+        ctx.fillStyle = ["#ff0080", "#00ffff", "#ffa500"][i % 3];
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.fillText(text, 50, h - 100 - i*40);
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+      });
+    }
+
+    function drawBricks() {
+      bricks.forEach(b => {
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.angle);
+        ctx.fillStyle = "#b7410e";
+        ctx.fillRect(-20, -10, 40, 20);
+        ctx.restore();
+      });
+    }
+
+    function updateBricks() {
+      bricks.forEach(b => {
+        b.vy += gravity;
+        b.x += b.vx;
+        b.y += b.vy;
+        b.angle += 0.05;
+
+        // check score
+        const dx = b.x - hoop.x;
+        const dy = b.y - hoop.y;
+        if (!b.scored && Math.hypot(dx, dy) < hoop.r) {
+          score++;
+          b.scored = true;
+          const audio = new Audio('https://actions.google.com/sounds/v1/ambiences/crowd_cheer.ogg');
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+        }
+      });
+      // remove bricks off screen
+      for (let i = bricks.length - 1; i >= 0; i--) {
+        if (bricks[i].y > h + 50) bricks.splice(i, 1);
+      }
+    }
+
+    function loop() {
+      ctx.clearRect(0,0,w,h);
+      drawCourt();
+      drawBricks();
+      updateBricks();
+      document.getElementById('score').innerText = `Score: ${score} | Shots: ${shots}/10`;
+
+      if (shots >= 10 && bricks.length === 0) {
+        ctx.fillStyle = "white";
+        ctx.font = "bold 32px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("Game Over!", w/2, h/2);
+        ctx.fillText(`Final Score: ${score}`, w/2, h/2 + 40);
+        return;
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    canvas.addEventListener('click', (e) => {
+      if (shots >= 10) return;
+      shots++;
+      const rect = canvas.getBoundingClientRect();
+      const cx = (e.clientX - rect.left);
+      const cy = (e.clientY - rect.top);
+      const angle = Math.atan2(hoop.y - cy, hoop.x - cx);
+      const speed = 15;
+      bricks.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        angle: 0,
+        scored: false
+      });
+    });
+
+    loop();
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      // keep hoop centered proportionally after resize
+      hoop.x = w / 2;
+      hoop.y = h / 3;
+    });
+  </script>
+
+  <!-- ✅ Service worker registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js');
+      });
+    }
+  </script>
+</body>
+</html>
+
+
