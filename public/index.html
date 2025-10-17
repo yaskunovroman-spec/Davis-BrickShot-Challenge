@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>Davis BrickShot Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="description" content="A funny, festive mini basketball game for Davis — throw bricks, score laughs!" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='16' fill='%23f43f5e'/%3E%3Crect x='25' y='25' width='50' height='50' fill='%23fee2e2' stroke='%2337131a' stroke-width='8'/%3E%3C/svg%3E" />
+    <style>
+      :root { color-scheme: dark; }
+      html, body { height: 100%; }
+      body { background: radial-gradient(ellipse at top, #0b1220, #050914); }
+      /* Prevent long-press menu on iOS */
+      canvas, button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    </style>
+  </head>
+  <body class="min-h-screen text-slate-100 antialiased">
+    <div class="flex flex-col items-center min-h-screen">
+      <header class="w-full max-w-3xl px-4 pt-4 flex items-center justify-between">
+        <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">
+          <span class="text-cyan-300">Davis</span> <span class="text-yellow-300">BrickShot</span> <span class="text-rose-400">Challenge</span>
+        </h1>
+        <div class="flex items-center gap-3 text-sm">
+          <div id="score" class="rounded px-2 py-1 bg-slate-800/60 border border-slate-700">Score: <span id="scoreValue">0</span></div>
+          <div id="shots" class="rounded px-2 py-1 bg-slate-800/60 border border-slate-700">Shots: <span id="shotsLeft">10</span>/10</div>
+        </div>
+      </header>
+
+      <main class="w-full max-w-3xl px-4 flex-1 flex flex-col items-center">
+        <div class="relative w-full aspect-[9/16] max-h-[85vh] mt-4 rounded-xl overflow-hidden border border-slate-700 bg-slate-900/40">
+          <canvas id="gameCanvas" class="absolute inset-0 w-full h-full"></canvas>
+
+          <!-- Start overlay -->
+          <div id="startOverlay" class="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div class="text-center">
+              <div class="text-4xl sm:text-5xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.6)] animate-pulse">Merry Brickmas!</div>
+              <p class="mt-3 text-cyan-200">A snowy streetball tribute for Davis</p>
+              <button id="startBtn" class="mt-6 px-5 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-semibold shadow-lg shadow-rose-500/30">
+                Tap or Click to Start
+              </button>
+            </div>
+          </div>
+
+          <!-- Floating message -->
+          <div id="floatMsg" class="pointer-events-none absolute left-1/2 top-12 -translate-x-1/2 text-center text-yellow-300 font-extrabold drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]"></div>
+
+          <!-- Game over modal -->
+          <div id="gameOver" class="hidden absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div class="w-full max-w-sm rounded-xl bg-slate-900/80 border border-slate-700 p-5">
+              <h2 class="text-2xl font-extrabold">Game Over</h2>
+              <p class="mt-2 text-slate-300">Total Points: <span id="finalScore">0</span></p>
+              <form id="saveForm" class="mt-4 space-y-3">
+                <div>
+                  <label class="text-sm text-slate-400">Name</label>
+                  <input id="playerName" class="mt-1 w-full rounded-md bg-slate-800 border border-slate-700 px-3 py-2" placeholder="Davis" maxlength="24" />
+                </div>
+                <div class="flex items-center gap-2">
+                  <button type="submit" class="px-4 py-2 rounded-md bg-yellow-400 text-slate-900 font-bold hover:bg-yellow-300">Save Score</button>
+                  <button type="button" id="playAgain" class="px-4 py-2 rounded-md bg-slate-700 hover:bg-slate-600">Play Again</button>
+                </div>
+              </form>
+              <div class="mt-4">
+                <h3 class="font-semibold">Top Scores</h3>
+                <ol id="topScores" class="mt-2 text-sm text-slate-300 list-decimal list-inside space-y-1"></ol>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <footer class="w-full max-w-3xl px-4 py-4 text-xs text-slate-400">
+          <span>Graffiti: "snich bitch", "davis_jrt", "BANDITOS" — glowing on the court walls.</span>
+        </footer>
+      </main>
+    </div>
+
+    <script src="/game.js" type="module"></script>
+  </body>
+</html>
