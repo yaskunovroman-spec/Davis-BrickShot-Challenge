@@ -1,213 +1,632 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Davis BrickShot Challenge 🧱🏀</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0d1b2a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="BrickShot" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="format-detection" content="telephone=no" />
 
-  <!-- ✅ PWA manifest -->
-  <link rel="manifest" href="./manifest.json">
-  <meta name="theme-color" content="#0d1b2a">
+  <title>Davis BrickShot Challenge</title>
 
-  <!-- ✅ iPhone / iPad web app settings -->
-  <link rel="apple-touch-icon" href="icon.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- PWA manifest and icons -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="icon" href="icon.png" type="image/png" />
+
+  <!--
+    Davis BrickShot Challenge - Single file PWA game
+
+    Hosting notes:
+    - For local HTTPS testing run: `npx http-server -S -p 8080`
+    - Deploy the three files to your host root: `index.html`, `manifest.json`, `service-worker.js`, plus `icon.png`.
+    - On GitHub Pages, Vercel, or Netlify, ensure the site is served over HTTPS.
+    - iPhone/iPad users can install via Safari: Share → Add to Home Screen.
+
+    PWA notes:
+    - Service Worker is registered at the end of this file and caches core assets for offline.
+    - manifest.json declares icons (all pointing to icon.png) and metadata.
+  -->
 
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #0d1b2a;
-      color: white;
-      overflow: hidden;
-      height: 100%;
-      width: 100%;
-      font-family: 'Arial', sans-serif;
+    :root {
+      --navy-900: #0d1b2a; /* theme */
+      --navy-800: #1b263b; /* background */
+      --icy-500: #e0fbfc;
+      --icy-300: #cfe7ff;
+      --snow: #ffffff;
+      --gold: #ffd166;
+      --neon-pink: #ff5fd1;
+      --neon-cyan: #5dfdff;
+      --neon-green: #6dfb84;
+      --brick: #bb4a3a;
+      --brick-dark: #8e2f22;
+      --accent: #ef476f;
     }
-    canvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-      background: linear-gradient(#1b263b, #0d1b2a);
-      cursor: pointer;
-    }
-    #title {
-      position: absolute;
-      top: 10%;
-      width: 100%;
-      text-align: center;
-      font-size: 2em;
-      text-shadow: 0 0 10px #fff, 0 0 20px #1e90ff;
-      animation: glow 3s infinite alternate;
-    }
-    @keyframes glow {
-      from { text-shadow: 0 0 10px #fff, 0 0 20px #1e90ff; }
-      to { text-shadow: 0 0 20px #fff, 0 0 40px #1e90ff; }
-    }
-    #score {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      font-size: 1.2em;
-      background: rgba(0,0,0,0.4);
-      padding: 8px 12px;
-      border-radius: 8px;
-    }
-  </style>
-  <link rel="icon" href="data:,">
-  <!-- empty data URL to avoid 404 favicons in local dev -->
-</head>
 
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--navy-800);
+      color: var(--snow);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      overflow: hidden; /* Prevent scroll during gameplay */
+      -webkit-touch-callout: none;
+      -webkit-user-select: none; user-select: none;
+    }
+
+    #gameRoot {
+      position: fixed; inset: 0;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    canvas#gameCanvas {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      display: block; touch-action: none; /* avoid scroll/zoom on iOS */
+      background: linear-gradient(180deg, #243b55 0%, #141e30 60%, #0d1b2a 100%);
+    }
+
+    /* HUD */
+    .hud {
+      position: absolute; left: 0; right: 0; top: 0; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      pointer-events: none;
+      text-shadow: 0 2px 8px rgba(0,0,0,.6);
+      font-weight: 700;
+    }
+    .badge { background: rgba(0,0,0,.35); padding: 8px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.15); }
+
+    /* Intro overlay */
+    #introOverlay, #gameOverOverlay {
+      position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; z-index: 3;
+      background: radial-gradient(1200px 800px at 50% 10%, rgba(255,255,255,.06), rgba(0,0,0,.55));
+      backdrop-filter: blur(2px);
+    }
+    .panel { max-width: 720px; width: 100%; background: rgba(13,27,42,.7); border: 1px solid rgba(255,255,255,.15); border-radius: 20px; padding: 28px; box-shadow: 0 20px 80px rgba(0,0,0,.50), inset 0 0 0 1px rgba(255,255,255,.05); }
+
+    .title {
+      font-size: clamp(28px, 6.2vw, 56px);
+      line-height: 1.05;
+      margin: 0 0 6px 0;
+      letter-spacing: .5px;
+      background: linear-gradient(90deg, var(--gold), #fff 35%, var(--gold));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      text-shadow: 0 0 24px rgba(255,209,102,.35);
+      animation: glowPulse 2.4s ease-in-out infinite;
+    }
+    .subtitle { opacity: .85; margin: 0 0 18px 0; }
+    .cta { display: inline-block; margin-top: 12px; padding: 12px 18px; border-radius: 14px; background: var(--accent); color: white; font-weight: 800; letter-spacing: .3px; border: 0; cursor: pointer; box-shadow: 0 10px 30px rgba(239,71,111,.45); }
+    .cta:active { transform: translateY(1px); }
+
+    @keyframes glowPulse {
+      0%,100% { text-shadow: 0 0 22px rgba(255,209,102,.32), 0 0 46px rgba(255,255,255,.2); }
+      50% { text-shadow: 0 0 12px rgba(255,209,102,.55), 0 0 60px rgba(255,255,255,.34); }
+    }
+
+    /* Graffiti banners (neon glow) */
+    #graffiti { position: absolute; left: 0; right: 0; top: 10%; display: flex; justify-content: center; gap: clamp(16px, 4vw, 36px); pointer-events: none; flex-wrap: wrap; z-index: 1; }
+    .tag {
+      font-weight: 900; text-transform: lowercase; letter-spacing: 1px;
+      font-size: clamp(18px, 4.2vw, 32px);
+      color: white; padding: 8px 12px; border-radius: 8px; border: 2px dashed rgba(255,255,255,.25);
+      transform: skew(-6deg) rotate(-2deg);
+      background: rgba(0,0,0,.25);
+      box-shadow: inset 0 0 40px rgba(255,255,255,.1);
+    }
+    .tag.pink { text-shadow: 0 0 6px var(--neon-pink), 0 0 16px var(--neon-pink), 0 0 28px rgba(255,95,209,.45); border-color: rgba(255,95,209,.5); }
+    .tag.cyan { text-shadow: 0 0 6px var(--neon-cyan), 0 0 16px var(--neon-cyan), 0 0 28px rgba(93,253,255,.45); border-color: rgba(93,253,255,.5); }
+    .tag.green { text-shadow: 0 0 6px var(--neon-green), 0 0 16px var(--neon-green), 0 0 28px rgba(109,251,132,.45); border-color: rgba(109,251,132,.5); }
+
+    /* Funny message toast */
+    #toast {
+      position: absolute; left: 50%; bottom: 18%; transform: translateX(-50%);
+      background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.18); border-radius: 12px; padding: 10px 14px; font-weight: 700; pointer-events: none; opacity: 0; transition: opacity .25s ease, transform .25s ease; z-index: 2;
+      text-shadow: 0 2px 8px rgba(0,0,0,.55);
+    }
+    #toast.show { opacity: 1; transform: translate(-50%, -6px); }
+
+    /* Footer help (small and subtle) */
+    .help {
+      position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; opacity: .6; font-size: 12px; pointer-events: none;
+    }
+
+    /* Buttons in overlays */
+    .btnRow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      background: linear-gradient(180deg, #ff6f91, #ef476f); color: white; font-weight: 800; border: 0; padding: 12px 16px; border-radius: 12px; cursor: pointer; box-shadow: 0 8px 28px rgba(239,71,111,.45);
+    }
+    .btn.secondary { background: linear-gradient(180deg, #4cc9f0, #4895ef); box-shadow: 0 8px 28px rgba(72,149,239,.35); }
+
+  </style>
+</head>
 <body>
-  <div id="title">🏀 Davis BrickShot Challenge 🧱</div>
-  <div id="score">Score: 0 | Shots: 0/10</div>
-  <canvas id="gameCanvas"></canvas>
+  <div id="gameRoot">
+    <canvas id="gameCanvas" width="360" height="720" aria-label="Snowy court where Davis throws bricks"></canvas>
+
+    <div class="hud" aria-hidden="true">
+      <div class="badge" id="scoreBadge">Score: 0</div>
+      <div class="badge" id="shotsBadge">Shots: 10</div>
+    </div>
+
+    <div id="graffiti" aria-hidden="true">
+      <span class="tag pink">snich bitch</span>
+      <span class="tag cyan">davis_jrt</span>
+      <span class="tag green">BANDITOS</span>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <div id="introOverlay" role="dialog" aria-modal="true">
+      <div class="panel">
+        <h1 class="title">Merry Brickmas!</h1>
+        <p class="subtitle">Welcome to the Davis BrickShot Challenge – a festive mini-hoops game.</p>
+        <div style="opacity:.85; font-size:14px; margin-bottom:14px;">
+          Tap or click to throw a brick. Sink it for cheers! 10 shots total.
+        </div>
+        <div class="btnRow">
+          <button class="cta" id="startBtn" aria-label="Start game">Start Game</button>
+        </div>
+        <div class="help">Install on iPhone: Safari → Share → Add to Home Screen</div>
+      </div>
+    </div>
+
+    <div id="gameOverOverlay" hidden role="dialog" aria-modal="true">
+      <div class="panel">
+        <h2 class="title" style="font-size: clamp(24px,5.5vw,48px);">Game Over</h2>
+        <p id="finalScore" style="font-size:18px; margin-top:6px;">You scored 0 points.</p>
+        <div class="btnRow" style="margin-top:8px;">
+          <button class="btn" id="restartBtn">Restart</button>
+          <a class="btn secondary" href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps" target="_blank" rel="noopener noreferrer">What is a PWA?</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="help">Tip: For best performance, add to Home Screen. Works offline after first load.</div>
+  </div>
 
   <script>
+  // ---------------------------------------------------------------------------
+  // Simple canvas game engine for "Davis BrickShot Challenge"
+  // ---------------------------------------------------------------------------
+  (function() {
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    let w = window.innerWidth;
-    let h = window.innerHeight;
 
-    function resizeCanvas() {
-      w = window.innerWidth;
-      h = window.innerHeight;
-      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
-      canvas.style.width = w + 'px';
-      canvas.style.height = h + 'px';
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Fit canvas to device pixels for crisp rendering
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    function resize() {
+      const { clientWidth, clientHeight } = canvas;
+      canvas.width = Math.floor(clientWidth * DPR);
+      canvas.height = Math.floor(clientHeight * DPR);
     }
-    resizeCanvas();
 
+    // Keep DOM HUD references
+    const scoreEl = document.getElementById('scoreBadge');
+    const shotsEl = document.getElementById('shotsBadge');
+    const toastEl = document.getElementById('toast');
+
+    const introOverlay = document.getElementById('introOverlay');
+    const startBtn = document.getElementById('startBtn');
+    const gameOverOverlay = document.getElementById('gameOverOverlay');
+    const finalScoreEl = document.getElementById('finalScore');
+    const restartBtn = document.getElementById('restartBtn');
+
+    // Game state
+    let gameState = 'intro'; // 'intro' | 'ready' | 'flying' | 'over'
     let score = 0;
-    let shots = 0;
-    const hoop = { x: w/2, y: h/3, r: 40 };
-    const bricks = [];
-    const gravity = 0.6;
+    let shotsLeft = 10;
+    let lastTime = 0;
 
-    // graffiti banners (you can replace with safer strings before publishing)
-    const banners = ["snich bitch", "davis_jrt", "BANDITOS"];
+    // Court & hoop dimensions (computed on resize)
+    let court = { left: 0, right: 0, top: 0, bottom: 0 };
+    let hoop = { x: 0, y: 0, r: 0, netW: 0, netH: 0 };
 
-    function drawCourt() {
-      ctx.fillStyle = "#1b263b";
-      ctx.fillRect(0, 0, w, h);
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 5;
+    // Brick projectile
+    const brick = {
+      active: false,
+      x: 0, y: 0,
+      vx: 0, vy: 0,
+      w: 0, h: 0,
+      rotation: 0,
+      scored: false,
+    };
+
+    // Snow particles for ambience
+    const snow = [];
+
+    // Funny messages
+    const MISS_MESSAGES = [
+      'Clang! Frostbite fingers?',
+      'Snowed out. Try again!',
+      'That one was… avant-garde.',
+      'Ice cold brick!',
+      'Hoop said: “Not today.”',
+      'Festive airball!',
+    ];
+    const SCORE_MESSAGES = [
+      'SWISH! Merry Brickmas!',
+      'Nothing but net!',
+      'Crowd goes wild!',
+      'Bang! Right through!',
+      'Bricktacular bucket!',
+      'Dasher, Dancer, and Davis!',
+    ];
+
+    // Physics constants (scale with canvas height)
+    let G = 2600; // px/s^2, updated on resize
+    let throwSpeedK = 2.2; // velocity scaling constant
+
+    // Audio (created on first user interaction on iOS)
+    let audioCtx = null;
+    function ensureAudio() {
+      if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        audioCtx = AC ? new AC() : null;
+      }
+    }
+
+    function playCheer() {
+      if (!audioCtx) return;
+      const duration = 0.9;
+
+      // Create a crowd-like noise by filtered white noise + a quick rising pitch
+      const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length); // fade out
+      }
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer;
+      const noiseFilter = audioCtx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.value = 1200;
+      noiseFilter.Q.value = 0.5;
+
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.value = 0.3;
+
+      noise.connect(noiseFilter).connect(noiseGain).connect(audioCtx.destination);
+
+      // A short harmonic whoop
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sawtooth';
+      const oscGain = audioCtx.createGain();
+      oscGain.gain.value = 0.0;
+
+      const now = audioCtx.currentTime;
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.25);
+      oscGain.gain.setValueAtTime(0.0, now);
+      oscGain.gain.linearRampToValueAtTime(0.15, now + 0.08);
+      oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+      osc.connect(oscGain).connect(audioCtx.destination);
+
+      noise.start();
+      osc.start();
+      noise.stop(now + duration);
+      osc.stop(now + 0.55);
+    }
+
+    function showToast(text) {
+      toastEl.textContent = text;
+      toastEl.classList.add('show');
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toastEl.classList.remove('show'), 1200);
+    }
+
+    function resetGame() {
+      score = 0; shotsLeft = 10;
+      gameState = 'ready';
+      updateHud();
+      brick.active = false; brick.scored = false;
+      gameOverOverlay.hidden = true;
+    }
+
+    function updateHud() {
+      scoreEl.textContent = `Score: ${score}`;
+      shotsEl.textContent = `Shots: ${shotsLeft}`;
+    }
+
+    function setupSnow() {
+      snow.length = 0;
+      const count = Math.floor((canvas.width * canvas.height) / 55000); // scale with area
+      for (let i = 0; i < count; i++) {
+        snow.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          r: 1 + Math.random() * 2.2,
+          s: 0.4 + Math.random() * 0.8,
+          drift: (Math.random() - 0.5) * 0.4,
+        });
+      }
+    }
+
+    function layout() {
+      resize();
+      // Court margins relative to canvas size
+      const W = canvas.width, H = canvas.height;
+      court.left = W * 0.06; court.right = W * 0.94; court.top = H * 0.18; court.bottom = H * 0.92;
+
+      // Hoop placement near right side
+      hoop.r = Math.max(16 * DPR, Math.min(W, H) * 0.025);
+      hoop.x = W * 0.78; hoop.y = H * 0.42;
+      hoop.netW = hoop.r * 2.1;
+      hoop.netH = hoop.r * 2.6;
+
+      // Brick size
+      brick.w = Math.max(18 * DPR, Math.min(W, H) * 0.04) * 1.6;
+      brick.h = brick.w * 0.55;
+
+      // Physics scale
+      G = 2600 * (H / 720);
+      throwSpeedK = 2.15 * (H / 720);
+
+      setupSnow();
+    }
+
+    function drawBackground() {
+      const W = canvas.width, H = canvas.height;
+
+      // Night sky gradient (already set in CSS as fallback)
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, '#203a72');
+      sky.addColorStop(0.55, '#15253f');
+      sky.addColorStop(1, '#0d1b2a');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+
+      // Stars
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      for (let i = 0; i < 80; i++) {
+        const x = Math.random() * W; const y = Math.random() * H * 0.45;
+        const r = Math.random() * 1.4 + 0.3;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = '#e8f0ff'; ctx.fill();
+      }
+      ctx.restore();
+
+      // Distant fence
+      const fenceY = court.top + (court.bottom - court.top) * 0.1;
+      ctx.fillStyle = 'rgba(200,220,255,0.08)';
+      ctx.fillRect(0, fenceY, W, 4 * DPR);
+      for (let x = 0; x < W; x += 24 * DPR) {
+        ctx.fillRect(x, fenceY - 16 * DPR, 3 * DPR, 36 * DPR);
+      }
+
+      // Court floor (snow-dusted)
+      const floorGrad = ctx.createLinearGradient(0, court.top, 0, court.bottom);
+      floorGrad.addColorStop(0, '#1a2b45');
+      floorGrad.addColorStop(1, '#0f1a2a');
+      ctx.fillStyle = floorGrad;
+      ctx.fillRect(court.left, court.top, court.right - court.left, court.bottom - court.top);
+
+      // Snow cover shimmer
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 40; i++) {
+        const x = court.left + Math.random() * (court.right - court.left);
+        const y = court.top + Math.random() * (court.bottom - court.top);
+        const w = 40 * DPR + Math.random() * 80 * DPR;
+        const h = 2 * DPR + Math.random() * 5 * DPR;
+        ctx.fillRect(x, y, w, h);
+      }
+      ctx.restore();
+
+      // Backboard
+      const bbW = 140 * DPR, bbH = 90 * DPR;
+      const bbX = hoop.x + hoop.r * 1.6;
+      const bbY = hoop.y - bbH * 0.5;
+      ctx.fillStyle = '#e8eef7';
+      ctx.fillRect(bbX, bbY, bbW, bbH);
+      ctx.strokeStyle = '#c2ccdd'; ctx.lineWidth = 2 * DPR; ctx.strokeRect(bbX, bbY, bbW, bbH);
+      // Square on backboard
+      ctx.strokeStyle = '#ef476f'; ctx.lineWidth = 3 * DPR; ctx.strokeRect(bbX + 20 * DPR, bbY + 18 * DPR, 32 * DPR, 28 * DPR);
+
+      // Rim
+      ctx.strokeStyle = '#ff7f2a'; ctx.lineWidth = 6 * DPR;
+      ctx.beginPath(); ctx.arc(hoop.x, hoop.y, hoop.r, 0, Math.PI * 2); ctx.stroke();
+
+      // Net (simple lines)
+      ctx.save();
+      ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.lineWidth = 1.5 * DPR;
+      for (let i = -3; i <= 3; i++) {
+        const angle = (i / 3) * Math.PI * 0.4;
+        const x1 = hoop.x + Math.cos(angle) * hoop.r;
+        const y1 = hoop.y + Math.sin(angle) * hoop.r;
+        const x2 = hoop.x + (i / 3) * (hoop.netW * 0.35);
+        const y2 = hoop.y + hoop.netH;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      ctx.restore();
+
+      // Snowfall
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      for (const s of snow) {
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function updateSnow(dt) {
+      const W = canvas.width, H = canvas.height;
+      for (const s of snow) {
+        s.y += s.s * 60 * DPR * dt + 10 * dt; // fall speed
+        s.x += s.drift * 30 * dt;
+        if (s.y > H) { s.y = -6; s.x = Math.random() * W; }
+        if (s.x < -10) s.x = W + 10; else if (s.x > W + 10) s.x = -10;
+      }
+    }
+
+    function drawBrick() {
+      if (!brick.active) return;
+      const { x, y, w, h, rotation } = brick;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rotation);
+      // Brick body
+      ctx.fillStyle = '#bb4a3a';
+      roundRect(ctx, -w/2, -h/2, w, h, 6 * DPR);
+      ctx.fill();
+      ctx.strokeStyle = '#8e2f22'; ctx.lineWidth = 2 * DPR; ctx.stroke();
+      // Indented lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1 * DPR;
       ctx.beginPath();
-      ctx.arc(hoop.x, hoop.y, hoop.r, 0, Math.PI*2);
+      ctx.moveTo(-w * 0.35, -h * 0.15); ctx.lineTo(w * 0.35, -h * 0.15);
+      ctx.moveTo(-w * 0.35,  h * 0.15); ctx.lineTo(w * 0.35,  h * 0.15);
       ctx.stroke();
-
-      ctx.fillStyle = "rgba(255,255,255,0.1)";
-      for (let i = 0; i < 120; i++) {
-        ctx.fillRect(Math.random()*w, Math.random()*h, 2, 2);
-      }
-
-      // graffiti
-      ctx.font = "bold 26px Courier";
-      banners.forEach((text, i) => {
-        ctx.fillStyle = ["#ff0080", "#00ffff", "#ffa500"][i % 3];
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.fillText(text, 50, h - 100 - i*40);
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
-      });
+      ctx.restore();
     }
 
-    function drawBricks() {
-      bricks.forEach(b => {
-        ctx.save();
-        ctx.translate(b.x, b.y);
-        ctx.rotate(b.angle);
-        ctx.fillStyle = "#b7410e";
-        ctx.fillRect(-20, -10, 40, 20);
-        ctx.restore();
-      });
+    function roundRect(ctx, x, y, w, h, r) {
+      const rr = Math.min(r, w/2, h/2);
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
     }
 
-    function updateBricks() {
-      bricks.forEach(b => {
-        b.vy += gravity;
-        b.x += b.vx;
-        b.y += b.vy;
-        b.angle += 0.05;
+    function step(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+      lastTime = timestamp;
 
-        // check score
-        const dx = b.x - hoop.x;
-        const dy = b.y - hoop.y;
-        if (!b.scored && Math.hypot(dx, dy) < hoop.r) {
-          score++;
-          b.scored = true;
-          const audio = new Audio('https://actions.google.com/sounds/v1/ambiences/crowd_cheer.ogg');
-          audio.currentTime = 0;
-          audio.play().catch(() => {});
+      updateSnow(dt);
+
+      // Physics for flying brick
+      if (brick.active) {
+        brick.vy += G * dt;
+        brick.x += brick.vx * dt;
+        brick.y += brick.vy * dt;
+        brick.rotation += 2.8 * dt * Math.sign(brick.vx || 1);
+
+        // Score detection: brick passes through rectangular net window
+        const prevVy = brick.vy - G * dt;
+        const goingDownNow = brick.vy > 0;
+        const wasGoingUp = prevVy < 0;
+        const inX = brick.x > (hoop.x - hoop.netW * 0.5) && brick.x < (hoop.x + hoop.netW * 0.5);
+        const inY = brick.y > hoop.y && brick.y < (hoop.y + hoop.netH);
+        if (!brick.scored && goingDownNow && inX && inY) {
+          brick.scored = true;
+          score += 1; updateHud();
+          showToast(SCORE_MESSAGES[Math.floor(Math.random() * SCORE_MESSAGES.length)]);
+          playCheer();
         }
-      });
-      // remove bricks off screen
-      for (let i = bricks.length - 1; i >= 0; i--) {
-        if (bricks[i].y > h + 50) bricks.splice(i, 1);
+
+        // Ground or out of bounds ends the shot
+        if (brick.y > court.bottom + 80 * DPR || brick.x < -80 * DPR || brick.x > canvas.width + 80 * DPR) {
+          endShot();
+        }
       }
+
+      drawBackground();
+      drawBrick();
+
+      requestAnimationFrame(step);
     }
 
-    function loop() {
-      ctx.clearRect(0,0,w,h);
-      drawCourt();
-      drawBricks();
-      updateBricks();
-      document.getElementById('score').innerText = `Score: ${score} | Shots: ${shots}/10`;
-
-      if (shots >= 10 && bricks.length === 0) {
-        ctx.fillStyle = "white";
-        ctx.font = "bold 32px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText("Game Over!", w/2, h/2);
-        ctx.fillText(`Final Score: ${score}`, w/2, h/2 + 40);
+    function endShot() {
+      if (!brick.active) return;
+      brick.active = false;
+      const msg = brick.scored ? undefined : MISS_MESSAGES[Math.floor(Math.random() * MISS_MESSAGES.length)];
+      if (msg) showToast(msg);
+      if (shotsLeft <= 0) {
+        // Already handled
         return;
       }
-
-      requestAnimationFrame(loop);
+      if (shotsLeft - 1 === 0) {
+        shotsLeft = 0; updateHud();
+        gameOver();
+      } else {
+        shotsLeft -= 1; updateHud();
+        gameState = 'ready';
+      }
     }
 
-    canvas.addEventListener('click', (e) => {
-      if (shots >= 10) return;
-      shots++;
+    function gameOver() {
+      gameState = 'over';
+      finalScoreEl.textContent = `You scored ${score} point${score === 1 ? '' : 's'}.`;
+      gameOverOverlay.hidden = false;
+    }
+
+    function shootTo(xClient, yClient) {
+      if (gameState !== 'ready') return;
+      ensureAudio();
+
+      // Convert to canvas coordinates (DPR-aware)
       const rect = canvas.getBoundingClientRect();
-      const cx = (e.clientX - rect.left);
-      const cy = (e.clientY - rect.top);
-      const angle = Math.atan2(hoop.y - cy, hoop.x - cx);
-      const speed = 15;
-      bricks.push({
-        x: cx,
-        y: cy,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        angle: 0,
-        scored: false
-      });
+      const x = (xClient - rect.left) * DPR;
+      const y = (yClient - rect.top) * DPR;
+
+      // Start brick near bottom left
+      brick.x = canvas.width * 0.18;
+      brick.y = canvas.height * 0.80;
+      brick.rotation = 0;
+      brick.scored = false;
+
+      // Aim vector toward pointer, clamp speed
+      const dx = x - brick.x; const dy = y - brick.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const nx = dx / dist, ny = dy / dist;
+
+      const speed = Math.min(1800 * (canvas.height / 800), dist * throwSpeedK);
+      brick.vx = nx * speed;
+      brick.vy = ny * speed;
+
+      brick.active = true;
+      gameState = 'flying';
+    }
+
+    function onPointerDown(ev) {
+      if (gameState === 'intro') {
+        introOverlay.style.display = 'none';
+        gameState = 'ready';
+        ensureAudio();
+        return;
+      }
+      if (gameState === 'over') return;
+      shootTo(ev.clientX, ev.clientY);
+    }
+
+    // Wire UI
+    startBtn.addEventListener('click', () => {
+      introOverlay.style.display = 'none';
+      gameState = 'ready';
+      ensureAudio();
+    });
+    restartBtn.addEventListener('click', () => {
+      resetGame();
     });
 
-    loop();
+    // Canvas listeners
+    canvas.addEventListener('pointerdown', onPointerDown, { passive: true });
 
-    window.addEventListener('resize', () => {
-      resizeCanvas();
-      // keep hoop centered proportionally after resize
-      hoop.x = w / 2;
-      hoop.y = h / 3;
-    });
+    // Handle layout
+    const ro = new ResizeObserver(() => { layout(); });
+    ro.observe(canvas);
+    layout();
+
+    requestAnimationFrame(step);
+
+    // Expose minimal helper for console debugging
+    window.__BrickShot = { resetGame, playCheer };
+  })();
   </script>
 
-  <!-- ✅ Service worker registration -->
+  <!-- Service Worker registration (required by spec) -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js');
+        navigator.serviceWorker.register('/service-worker.js');
       });
     }
   </script>
 </body>
 </html>
-
-
